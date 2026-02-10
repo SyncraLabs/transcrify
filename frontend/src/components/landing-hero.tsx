@@ -45,7 +45,7 @@ export function LandingHero({ dict }: LandingHeroProps) {
         setResult(null);
         setBatchResults([]);
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
         if (mode === "single") {
             if (!url.trim()) return;

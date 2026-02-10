@@ -126,7 +126,7 @@ def transcribe_audio_openai(audio_path: str) -> dict:
         "segments": segments
     }
 
-@app.post("/transcribe")
+@app.post("/api/transcribe")
 def transcribe_video(request: TranscribeRequest):
     video_url = request.url
     if not video_url:
@@ -148,7 +148,7 @@ def transcribe_video(request: TranscribeRequest):
         print(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/transcribe/batch")
+@app.post("/api/transcribe/batch")
 def transcribe_batch(request: BatchTranscribeRequest):
     """Process multiple URLs and return all transcriptions."""
     if not request.urls:
