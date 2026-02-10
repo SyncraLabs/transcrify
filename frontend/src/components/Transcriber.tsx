@@ -9,8 +9,6 @@ import {
 } from "lucide-react";
 import axios from "axios";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 interface TranscriptionResult {
     url: string;
     title: string;
@@ -56,13 +54,13 @@ export default function Transcriber() {
         try {
             if (validUrls.length === 1) {
                 setCurrentProcessing("Downloading & transcribing...");
-                const response = await axios.post(`${API_URL}/api/transcribe`, {
+                const response = await axios.post("/api/transcribe", {
                     url: validUrls[0],
                 });
                 setResults([{ url: validUrls[0], success: true, ...response.data }]);
             } else {
                 setCurrentProcessing(`Processing ${validUrls.length} videos...`);
-                const response = await axios.post(`${API_URL}/api/transcribe/batch`, {
+                const response = await axios.post("/api/transcribe/batch", {
                     urls: validUrls,
                 });
                 setResults(response.data.results);
