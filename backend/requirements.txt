@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-yt-dlp
-openai
-python-multipart
-python-dotenv
-
