@@ -32,7 +32,8 @@ async function downloadAudio(url: string): Promise<Buffer> {
 }
 
 async function transcribeAudio(audioBuffer: Buffer, filename: string) {
-    const file = new File([audioBuffer], filename, { type: "audio/webm" });
+    const uint8Array = new Uint8Array(audioBuffer);
+    const file = new File([uint8Array], filename, { type: "audio/webm" });
 
     const result = await openai.audio.transcriptions.create({
         model: "whisper-1",
