@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import ytdl from "@distube/ytdl-core";
 import { Readable } from "stream";
+import { apiMiddleware, sendWebhook, optionsResponse, corsHeaders } from "@/lib/api-utils";
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -98,12 +99,30 @@ async function processUrl(url: string) {
 }
 
 export async function POST(request: NextRequest) {
+    // Apply middleware (auth + rate limiting)
+    const middleware = apiMiddleware(request);
+    if (!middleware.ok) {
+        return middleware.error;
+    }
+
     try {
         const body = await request.json();
-        const { urls } = body;
+        const { urls, webhook_url, webhook_secret } = body;
 
         if (!urls || !Array.isArray(urls) || urls.length === 0) {
-            return NextResponse.json({ detail: "URLs list is empty" }, { status: 400 });
+            return NextResponse.json(
+                { error: "URLs array is required and must not be empty" },
+                { status: 400, headers: corsHeaders() }
+            );
+        }
+
+        // Limit batch size to prevent abuse
+        const maxBatchSize = parseInt(process.env.MAX_BATCH_SIZE || "10");
+        if (urls.length > maxBatchSize) {
+            return NextResponse.json(
+                { error: `Batch size exceeds maximum of ${maxBatchSize}` },
+                { status: 400, headers: corsHeaders() }
+            );
         }
 
         // Process URLs sequentially to avoid overwhelming the API
@@ -113,23 +132,45 @@ export async function POST(request: NextRequest) {
             results.push(result);
         }
 
-        return NextResponse.json({ results });
+        const responseData = {
+            success: true,
+            total: urls.length,
+            completed: results.filter(r => r.success).length,
+            failed: results.filter(r => !r.success).length,
+            results,
+        };
+
+        // Send webhook if provided
+        if (webhook_url) {
+            const webhookResult = await sendWebhook(
+                webhook_url,
+                {
+                    event: "batch_transcription.completed",
+                    timestamp: new Date().toISOString(),
+                    data: responseData,
+                },
+                webhook_secret
+            );
+
+            if (!webhookResult.success) {
+                console.error("Webhook failed:", webhookResult.error);
+            }
+        }
+
+        return NextResponse.json(responseData, { headers: corsHeaders() });
     } catch (error: any) {
         console.error("Batch transcription error:", error);
+
         return NextResponse.json(
-            { detail: error.message || "Failed to process batch" },
-            { status: 500 }
+            {
+                success: false,
+                error: error.message || "Failed to process batch",
+            },
+            { status: 500, headers: corsHeaders() }
         );
     }
 }
 
 export async function OPTIONS() {
-    return new NextResponse(null, {
-        status: 200,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-    });
+    return optionsResponse();
 }

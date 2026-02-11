@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import ytdl from "@distube/ytdl-core";
 import { Readable } from "stream";
+import { apiMiddleware, sendWebhook, optionsResponse, corsHeaders } from "@/lib/api-utils";
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -78,12 +79,21 @@ async function transcribeAudio(audioBuffer: Buffer, filename: string) {
 }
 
 export async function POST(request: NextRequest) {
+    // Apply middleware (auth + rate limiting)
+    const middleware = apiMiddleware(request);
+    if (!middleware.ok) {
+        return middleware.error;
+    }
+
     try {
         const body = await request.json();
-        const { url } = body;
+        const { url, webhook_url, webhook_secret } = body;
 
         if (!url) {
-            return NextResponse.json({ detail: "URL is required" }, { status: 400 });
+            return NextResponse.json(
+                { error: "URL is required" },
+                { status: 400, headers: corsHeaders() }
+            );
         }
 
         // Get video info
@@ -95,26 +105,46 @@ export async function POST(request: NextRequest) {
         // Transcribe
         const result = await transcribeAudio(audioBuffer, `${info.title}.webm`);
 
-        return NextResponse.json({
+        const responseData = {
+            success: true,
             title: info.title,
+            url,
             ...result,
-        });
+        };
+
+        // Send webhook if provided
+        if (webhook_url) {
+            const webhookResult = await sendWebhook(
+                webhook_url,
+                {
+                    event: "transcription.completed",
+                    timestamp: new Date().toISOString(),
+                    data: responseData,
+                },
+                webhook_secret
+            );
+
+            if (!webhookResult.success) {
+                console.error("Webhook failed:", webhookResult.error);
+            }
+        }
+
+        return NextResponse.json(responseData, { headers: corsHeaders() });
     } catch (error: any) {
         console.error("Transcription error:", error);
-        return NextResponse.json(
-            { detail: error.message || "Failed to transcribe" },
-            { status: 500 }
-        );
+
+        const errorResponse = {
+            success: false,
+            error: error.message || "Failed to transcribe",
+        };
+
+        return NextResponse.json(errorResponse, {
+            status: 500,
+            headers: corsHeaders(),
+        });
     }
 }
 
 export async function OPTIONS() {
-    return new NextResponse(null, {
-        status: 200,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-    });
+    return optionsResponse();
 }
