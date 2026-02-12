@@ -28,9 +28,21 @@ interface CobaltResponse {
     picker?: any[];
 }
 
-export async function downloadWithCobalt(url: string): Promise<{ buffer: Buffer; filename: string }> {
+const COBALT_INSTANCES = [
+    "https://api.cobalt.tools",    // Official
+    "https://cobalt.api.red",      // Reliable alternative
+    "https://api.wuk.sh"           // Another backup
+];
+
+export async function downloadWithCobalt(url: string, retryCount = 0): Promise<{ buffer: Buffer; filename: string }> {
+    // Try instances in order, shifting based on retryCount to rotate
+    const instanceIndex = retryCount % COBALT_INSTANCES.length;
+    const baseUrl = COBALT_INSTANCES[instanceIndex];
+
     try {
-        const response = await fetch("https://api.cobalt.tools/api/json", {
+        console.log(`Trying Cobalt instance: ${baseUrl} for ${url}`);
+
+        const response = await fetch(`${baseUrl}/api/json`, {
             method: "POST",
             headers: {
                 "Accept": "application/json",
@@ -48,6 +60,8 @@ export async function downloadWithCobalt(url: string): Promise<{ buffer: Buffer;
         const data = await response.json() as CobaltResponse;
 
         if (data.status === "error" || !data.url) {
+            // If the error suggests an issue with the instance, try another one
+            // unless we've tried them all
             throw new Error(data.text || "Cobalt API failed to process URL");
         }
 
@@ -73,8 +87,15 @@ export async function downloadWithCobalt(url: string): Promise<{ buffer: Buffer;
         return { buffer, filename };
 
     } catch (error: any) {
-        console.error("Cobalt download error:", error);
-        throw new Error(`Cobalt download failed: ${error.message}`);
+        console.error(`Cobalt download error on ${baseUrl}:`, error.message);
+
+        // If we haven't tried all instances, try the next one
+        if (retryCount < COBALT_INSTANCES.length - 1) {
+            console.log(`Retrying with next instance... (${retryCount + 1})`);
+            return downloadWithCobalt(url, retryCount + 1);
+        }
+
+        throw new Error(`All Cobalt instances failed. Last error: ${error.message}`);
     }
 }
 
