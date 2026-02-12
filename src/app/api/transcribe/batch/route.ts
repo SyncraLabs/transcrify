@@ -1,36 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import ytdl from "@distube/ytdl-core";
-import { Readable } from "stream";
 import { apiMiddleware, sendWebhook, optionsResponse, corsHeaders } from "@/lib/api-utils";
+import { downloadAudio, getVideoInfo } from "@/lib/server-download-utils";
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-async function streamToBuffer(stream: Readable): Promise<Buffer> {
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream) {
-        chunks.push(Buffer.from(chunk));
-    }
-    return Buffer.concat(chunks);
-}
 
-async function getVideoInfo(url: string) {
-    const info = await ytdl.getInfo(url);
-    return {
-        title: info.videoDetails.title,
-        duration: parseInt(info.videoDetails.lengthSeconds),
-    };
-}
-
-async function downloadAudio(url: string): Promise<Buffer> {
-    const stream = ytdl(url, {
-        filter: "audioonly",
-        quality: "lowestaudio",
-    });
-    return streamToBuffer(stream as unknown as Readable);
-}
 
 async function transcribeAudio(audioBuffer: Buffer, filename: string) {
     const uint8Array = new Uint8Array(audioBuffer);
@@ -79,8 +56,8 @@ async function transcribeAudio(audioBuffer: Buffer, filename: string) {
 async function processUrl(url: string) {
     try {
         const info = await getVideoInfo(url);
-        const audioBuffer = await downloadAudio(url);
-        const result = await transcribeAudio(audioBuffer, `${info.title}.webm`);
+        const { buffer: audioBuffer, filename } = await downloadAudio(url);
+        const result = await transcribeAudio(audioBuffer, filename);
 
         return {
             url,

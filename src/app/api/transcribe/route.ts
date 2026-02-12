@@ -1,36 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import ytdl from "@distube/ytdl-core";
-import { Readable } from "stream";
 import { apiMiddleware, sendWebhook, optionsResponse, corsHeaders } from "@/lib/api-utils";
+import { downloadAudio, getVideoInfo } from "@/lib/server-download-utils";
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-async function streamToBuffer(stream: Readable): Promise<Buffer> {
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream) {
-        chunks.push(Buffer.from(chunk));
-    }
-    return Buffer.concat(chunks);
-}
 
-async function getVideoInfo(url: string) {
-    const info = await ytdl.getInfo(url);
-    return {
-        title: info.videoDetails.title,
-        duration: parseInt(info.videoDetails.lengthSeconds),
-    };
-}
-
-async function downloadAudio(url: string): Promise<Buffer> {
-    const stream = ytdl(url, {
-        filter: "audioonly",
-        quality: "lowestaudio",
-    });
-    return streamToBuffer(stream as unknown as Readable);
-}
 
 async function transcribeAudio(audioBuffer: Buffer, filename: string) {
     const uint8Array = new Uint8Array(audioBuffer);
@@ -94,6 +71,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         console.log("API: Body parsed", body);
         const { url, webhook_url, webhook_secret } = body;
+        console.log(`API: Processing request for URL: [${url}] (type: ${typeof url}, length: ${url?.length})`);
 
         if (!url) {
             console.log("API: No URL provided");
@@ -104,18 +82,15 @@ export async function POST(request: NextRequest) {
         }
 
         // Get video info
-        console.log("API: Getting video info for", url);
         const info = await getVideoInfo(url);
         console.log("API: Video info retrieved", info.title);
 
         // Download audio
-        console.log("API: Downloading audio...");
-        const audioBuffer = await downloadAudio(url);
+        const { buffer: audioBuffer, filename } = await downloadAudio(url);
         console.log("API: Audio downloaded, size:", audioBuffer.length);
 
         // Transcribe
-        console.log("API: Transcribing...");
-        const result = await transcribeAudio(audioBuffer, `${info.title}.webm`);
+        const result = await transcribeAudio(audioBuffer, filename);
         console.log("API: Transcription complete");
 
         const responseData = {
