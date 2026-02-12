@@ -79,17 +79,24 @@ async function transcribeAudio(audioBuffer: Buffer, filename: string) {
 }
 
 export async function POST(request: NextRequest) {
+    console.log("----------------------------------------------------------------");
+    console.log("API: POST /api/transcribe called");
+    console.log("----------------------------------------------------------------");
+
     // Apply middleware (auth + rate limiting)
     const middleware = apiMiddleware(request);
     if (!middleware.ok) {
+        console.log("API: Middleware failed", middleware.error);
         return middleware.error;
     }
 
     try {
         const body = await request.json();
+        console.log("API: Body parsed", body);
         const { url, webhook_url, webhook_secret } = body;
 
         if (!url) {
+            console.log("API: No URL provided");
             return NextResponse.json(
                 { error: "URL is required" },
                 { status: 400, headers: corsHeaders() }
@@ -97,13 +104,19 @@ export async function POST(request: NextRequest) {
         }
 
         // Get video info
+        console.log("API: Getting video info for", url);
         const info = await getVideoInfo(url);
+        console.log("API: Video info retrieved", info.title);
 
         // Download audio
+        console.log("API: Downloading audio...");
         const audioBuffer = await downloadAudio(url);
+        console.log("API: Audio downloaded, size:", audioBuffer.length);
 
         // Transcribe
+        console.log("API: Transcribing...");
         const result = await transcribeAudio(audioBuffer, `${info.title}.webm`);
+        console.log("API: Transcription complete");
 
         const responseData = {
             success: true,
@@ -114,6 +127,7 @@ export async function POST(request: NextRequest) {
 
         // Send webhook if provided
         if (webhook_url) {
+            console.log("API: Sending webhook to", webhook_url);
             const webhookResult = await sendWebhook(
                 webhook_url,
                 {
@@ -126,6 +140,8 @@ export async function POST(request: NextRequest) {
 
             if (!webhookResult.success) {
                 console.error("Webhook failed:", webhookResult.error);
+            } else {
+                console.log("API: Webhook sent successfully");
             }
         }
 
@@ -143,6 +159,16 @@ export async function POST(request: NextRequest) {
             headers: corsHeaders(),
         });
     }
+}
+
+export async function GET() {
+    return NextResponse.json(
+        {
+            message: "Transcrify API is running.",
+            instruction: "Send a POST request with { url: '...' } to transcribe video."
+        },
+        { status: 200, headers: corsHeaders() }
+    );
 }
 
 export async function OPTIONS() {
